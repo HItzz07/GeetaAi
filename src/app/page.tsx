@@ -6,11 +6,17 @@ import gitaBackground from "@/assests/images/ai-generated-9210397_1920.jpg";
 
 
 type GuideResponse = {
-  emotion: string;
-  topic: string;
-  response: string;
-  reflectionQuestion: string;
-  passages: string[];
+  verse_sanskrit_english: string;
+  translation: string;
+  personalized_wisdom: string;
+  reflection_question: string;
+  metadata: {
+    id: string;
+    chapter: number;
+    verse: number;
+    topics: string;
+    meaning: string;
+  };
 };
 
 export default function Home() {
@@ -19,21 +25,32 @@ export default function Home() {
   const [guide, setGuide] = useState<GuideResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState("English");
+  const [provider, setProvider] = useState("ollama");
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const resultsRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!message.trim()) return;
     setLoading(true);
     setError(null);
     setGuide(null);
-    
+
     try {
-      const res = await fetch("/api/guide-llm", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+      const res = await fetch(`${apiUrl}/api/v1/reflect`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, language }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: message,
+          age: 27,
+          language,
+          provider,
+        }),
       });
       if (!res.ok) {
         setError("Could not reach the AI guide. Please try again.");
@@ -42,7 +59,7 @@ export default function Home() {
       }
       const data = (await res.json()) as GuideResponse;
       setGuide(data);
-      
+
       // Scroll to results on mobile
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -55,10 +72,43 @@ export default function Home() {
   }
 
 
+  async function handleSpeak() {
+    if (!guide || isSpeaking) return;
+    const text = `${guide.verse_sanskrit_english.split(" | ")[0]}. ${guide.personalized_wisdom} ${guide.reflection_question}`;
+    setIsSpeaking(true);
+    try {
+      const res = await fetch("/api/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("tts_failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.playbackRate = 0.85;
+      audioRef.current = audio;
+      audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null; };
+      audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null; };
+      await audio.play();
+    } catch {
+      setIsSpeaking(false);
+    }
+  }
+
+  function stopSpeaking() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setIsSpeaking(false);
+  }
+
   return (
     <div className="sacred-background flex min-h-screen flex-col items-center justify-start px-4 py-12 text-zinc-50 overflow-hidden">
       <div className="pattern-overlay" />
-      
+
       {/* Decorative Lotus SVG Top */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-32 opacity-10 pointer-events-none">
         <svg viewBox="0 0 100 50" fill="currentColor" className="text-saffron">
@@ -89,18 +139,18 @@ export default function Home() {
             <div className="absolute inset-0 bg-saffron/20 blur-2xl rounded-full" />
             <div className="relative text-6xl md:text-7xl mb-2">🕉️</div>
           </div>
-          
+
           <div className="inline-flex items-center gap-2 rounded-full bg-saffron/10 px-4 py-1 text-xs font-medium text-saffron ring-1 ring-saffron/30 backdrop-blur-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-saffron shadow-[0_0_8px_#ff9933]" />
             Eternal Wisdom for Modern Life
           </div>
-          
+
           <div className="space-y-4">
             <h1 className="text-5xl font-bold tracking-tight md:text-7xl gold-gradient-text">
               Gita Mind Guide
             </h1>
             <p className="mx-auto max-w-2xl text-lg text-zinc-400 font-light italic leading-relaxed">
-              "When doubts haunt me, when disappointments stare me in the face, and I see not one ray of hope on the horizon, I turn to Bhagavad Gita and find a verse to comfort me."
+              &ldquo;When doubts haunt me, when disappointments stare me in the face, and I see not one ray of hope on the horizon, I turn to Bhagavad Gita and find a verse to comfort me.&rdquo;
               <br />
               <span className="text-sm text-zinc-600 not-italic">— Mahatma Gandhi</span>
             </p>
@@ -142,33 +192,46 @@ export default function Home() {
               </div>
 
               {error && (
-                <div className="rounded-lg bg-sacred-red/10 border border-sacred-red/20 px-4 py-2 text-sm text-sacred-red/80">
+<div className="rounded-lg bg-sacred-red/10 border border-sacred-red/20 px-4 py-2 text-sm text-sacred-red/80">
                   {error}
                 </div>
               )}
 
-              <div className="flex flex-col gap-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
-                      Guidance Language
-                    </label>
-                    <select
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
-                      className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
-                    >
-                      <option value="English" className="bg-zinc-900">English</option>
-                      <option value="Hindi" className="bg-zinc-900">Hindi</option>
-                    </select>
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
+                        Guidance Language
+                      </label>
+                      <select
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
+                      >
+                        <option value="English" className="bg-zinc-900">English</option>
+                        <option value="Hindi" className="bg-zinc-900">Hindi</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
+                        AI Provider
+                      </label>
+                      <select
+                        value={provider}
+                        onChange={(e) => setProvider(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
+                      >
+                        <option value="ollama" className="bg-zinc-900">Ollama (Llama)</option>
+                        <option value="groq" className="bg-zinc-900">Groq (Fast)</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="relative group overflow-hidden rounded-full bg-gradient-to-r from-saffron to-deep-saffron px-8 py-4 text-sm font-bold text-zinc-950 shadow-[0_10px_30px_rgba(255,103,31,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="relative group overflow-hidden rounded-full bg-gradient-to-r from-saffron to-deep-saffron px-8 py-4 text-sm font-bold text-zinc-950 shadow-[0_10px_30px_rgba(255,103,31,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                   <span className="relative z-10 flex items-center justify-center gap-2">
                     {loading ? (
                       <>
@@ -203,7 +266,7 @@ export default function Home() {
             {loading && (
               <div className="glass-card divine-border rounded-3xl p-12 flex flex-col items-center justify-center text-center gap-10 h-full min-h-[450px] overflow-hidden relative">
                 <div className="absolute inset-0 animate-shimmer pointer-events-none" />
-                
+
                 {/* Breathing Circles */}
                 <div className="relative flex items-center justify-center">
                   <div className="absolute w-40 h-40 bg-saffron/20 rounded-full animate-breathing" />
@@ -217,7 +280,7 @@ export default function Home() {
                     <h3 className="text-2xl font-medium text-saffron animate-text-fade">Take a deep breath...</h3>
                     <p className="text-zinc-400 italic">Inhale peace, exhale doubt.</p>
                   </div>
-                  
+
                   <div className="flex flex-col items-center gap-3">
                     <div className="flex gap-1">
                       <span className="w-1.5 h-1.5 bg-saffron rounded-full animate-bounce [animation-delay:0ms]" />
@@ -242,35 +305,52 @@ export default function Home() {
                       Bhagavad Gita Wisdom
                     </span>
                     <div className="flex gap-2 flex-wrap">
-                      {guide.emotion && (
-                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-[9px] text-zinc-400 border border-white/10">
-                          {guide.emotion}
-                        </span>
-                      )}
-                      {guide.topic && (
+                      <span className="px-2 py-0.5 rounded-full bg-white/5 text-[9px] text-zinc-400 border border-white/10">
+                        BG {guide.metadata.chapter}.{guide.metadata.verse}
+                      </span>
+                      {guide.metadata.topics.split(",")[0] && (
                         <span className="px-2 py-0.5 rounded-full bg-saffron/10 text-[9px] text-saffron border border-saffron/20">
-                          {guide.topic}
+                          {guide.metadata.topics.split(",")[0]}
                         </span>
                       )}
                     </div>
                   </div>
 
                   <div className="p-8 space-y-6">
-                    <div className="space-y-4">
-                      <h3 className="text-sm uppercase tracking-widest text-gold font-bold">Divine Wisdom</h3>
-                      <p className="text-zinc-200 leading-relaxed text-lg whitespace-pre-line">
-                        {guide.response}
+                    <div className="space-y-3">
+                      <h3 className="text-sm uppercase tracking-widest text-gold font-bold">Shloka</h3>
+                      <p className="text-amber-100 leading-relaxed italic">
+                        {guide.verse_sanskrit_english.split(" | ")[0]}
+                      </p>
+                      <p className="text-zinc-300 text-sm leading-relaxed">
+                        {guide.translation}
                       </p>
                     </div>
 
-                    {guide.reflectionQuestion && (
+                    <div className="space-y-4">
+                      <h3 className="text-sm uppercase tracking-widest text-gold font-bold">Divine Wisdom</h3>
+                      <p className="text-zinc-200 leading-relaxed text-lg whitespace-pre-line">
+                        {guide.personalized_wisdom}
+                      </p>
+                    </div>
+
+                    {guide.reflection_question && (
                       <div className="rounded-2xl bg-saffron/5 border border-saffron/20 p-6 space-y-2">
                         <p className="text-[10px] uppercase tracking-widest text-saffron font-bold">Reflection</p>
                         <p className="text-zinc-100 font-medium">
-                          {guide.reflectionQuestion}
+                          {guide.reflection_question}
                         </p>
                       </div>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={isSpeaking ? stopSpeaking : handleSpeak}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-xs font-medium text-zinc-300 transition hover:bg-white/10 hover:text-zinc-50"
+                    >
+                      <span className={`h-2 w-2 rounded-full ${isSpeaking ? "bg-sacred-red animate-pulse" : "bg-emerald-400"}`} />
+                      {isSpeaking ? "Stop voice" : "Listen in AI voice"}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -281,7 +361,7 @@ export default function Home() {
         <footer className="mt-8 flex flex-col items-center gap-4 py-8 border-t border-white/5">
           <div className="text-2xl opacity-50">🕉️</div>
           <p className="text-sm text-zinc-500 font-light tracking-wide text-center max-w-lg">
-            A spiritual companion bridging ancient Vedic wisdom with modern psychological needs. 
+            A spiritual companion bridging ancient Vedic wisdom with modern psychological needs.
             May you find peace and clarity in your journey.
           </p>
           <div className="flex gap-6 text-[10px] uppercase tracking-[0.2em] text-zinc-600">
