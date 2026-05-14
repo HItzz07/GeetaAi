@@ -1,23 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #050816;
+  --foreground: #f8fafc;
+  --saffron: #ff9933;
+  --deep-saffron: #ff671f;
   --gold: #f4d27a;
-  --deep-blue: #050816;
+  --temple-gold: #d4af37;
+  --deep-blue: #0a0e23;
+  --sacred-red: #8b0000;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-saffron: var(--saffron);
+  --color-deep-saffron: var(--deep-saffron);
+  --color-gold: var(--gold);
+  --color-temple-gold: var(--temple-gold);
+  --color-sacred-red: var(--sacred-red);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-playfair: var(--font-playfair);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #050816;
+    --foreground: #f8fafc;
   }
 }
 
@@ -26,48 +36,121 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow-x: hidden;
 }
 
 .shloka-text {
   font-family: var(--font-playfair), "Times New Roman", ui-serif, Georgia, serif;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
+  line-height: 1.8;
+  text-shadow: 0 0 20px rgba(244, 210, 122, 0.3);
 }
 
 .sacred-background {
   position: relative;
   isolation: isolate;
-  background-image: radial-gradient(
-      circle at top,
-      rgba(244, 210, 122, 0.35),
-      transparent 55%
-    ),
-    radial-gradient(circle at bottom, rgba(15, 23, 42, 0.9), #020617),
-    url("/bg-gita.jpg");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-color: var(--background);
+  min-height: 100vh;
 }
 
 .sacred-background::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-      circle at top left,
-      rgba(251, 191, 36, 0.25),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at top right,
-      rgba(59, 130, 246, 0.2),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at bottom,
-      rgba(15, 23, 42, 0.7),
-      rgba(15, 23, 42, 0.95)
-    );
-  mix-blend-mode: soft-light;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(255, 153, 51, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(212, 175, 55, 0.1) 0%, transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(139, 0, 0, 0.1) 0%, transparent 40%);
   pointer-events: none;
   z-index: -1;
+}
+
+/* Subtle pattern overlay */
+.pattern-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 50 L60 40 L70 50 L60 60 Z' fill='%23D4AF37'/%3E%3Ccircle cx='50' cy='50' r='5' fill='%23D4AF37'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; filter: blur(40px); }
+  50% { opacity: 0.8; filter: blur(60px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.gold-gradient-text {
+  background: linear-gradient(to right, #f4d27a, #d4af37, #f4d27a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% auto;
+  animation: shine 4s linear infinite;
+}
+
+@keyframes shine {
+  to { background-position: 200% center; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 153, 51, 0.1), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+.divine-border {
+  position: relative;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.divine-border::before, .divine-border::after {
+  content: "✦";
+  position: absolute;
+  color: var(--temple-gold);
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+@keyframes breathing {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.5); opacity: 0.1; }
+}
+
+.animate-breathing {
+  animation: breathing 4s ease-in-out infinite;
+}
+
+@keyframes text-fade {
+  0%, 100% { opacity: 0.4; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-5px); }
+}
+
+.animate-text-fade {
+  animation: text-fade 4s ease-in-out infinite;
 }

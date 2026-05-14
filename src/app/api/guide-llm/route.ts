@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 type GuideLlmRequest = {
   message: string;
+  language?: string;
 };
 
 type GuideLlmResponse = {
@@ -12,6 +13,39 @@ type GuideLlmResponse = {
   passages: string[];
 };
 
+function buildSystemPrompt(language: string): string {
+  if (language === "Hindi") {
+    return (
+      "You are a deeply empathetic counselor who blends modern mental health understanding with the wisdom of the Bhagavad Gita. " +
+      "Reply entirely in simple, soothing, everyday Hindi — like a caring elder or close friend. Only occasional Sanskrit words allowed. " +
+      "Weave in short Sanskrit shloka lines naturally. Respond calmly, with warmth and no judgment. " +
+      "Keep response to 2–4 short paragraphs. End with one gentle Hindi reflection question. " +
+      "Respond strictly in JSON as described by the user message."
+    );
+  }
+  return (
+    "You are a deeply empathetic counselor blending modern mental health understanding with the wisdom of the Bhagavad Gita. " +
+    "Reply in warm, clear, soothing English — like a compassionate friend or wise elder. " +
+    "Naturally weave in relevant Sanskrit shloka lines with their meaning. Respond calmly and non-judgmentally. " +
+    "Keep response to 2–4 short paragraphs. End with one gentle English reflection question. " +
+    "Respond strictly in JSON as described by the user message."
+  );
+}
+
+function buildUserPrompt(payload: GuideLlmRequest, passages: string[]): string {
+  const lang = payload.language === "Hindi" ? "Hindi" : "English";
+  const contextBlock =
+    passages.length > 0
+      ? `Relevant Gita passages:\n\n${passages.map((p, i) => `(${i + 1}) ${p}`).join("\n\n")}\n\n`
+      : "";
+  return (
+    contextBlock +
+    `User's message: "${payload.message}"\n\n` +
+    `Reply in ${lang}. Respond strictly in this JSON format (no extra text):\n` +
+    '{\n  "emotion": "string",\n  "topic": "string",\n  "response": "string",\n  "reflectionQuestion": "string"\n}'
+  );
+}
+
 async function callOllamaLlm(
   payload: GuideLlmRequest,
   passages: string[]
@@ -19,32 +53,9 @@ async function callOllamaLlm(
   const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
   const model = process.env.OLLAMA_LLM_MODEL || "llama3.2";
 
-  const system =
-    "You are a deeply empathetic counselor who blends modern mental health understanding with the wisdom of the Bhagavad Gita. " +
-    "You must reply almost entirely in Hindi, using very simple, soothing, everyday Hindi words, like a caring elder or close friend. Avoid English sentences; only occasional single English terms or Sanskrit words are allowed when natural. " +
-    "You occasionally weave in short Sanskrit lines from the shlokas in a respectful way. " +
-    "Your task is to respond to the user in a way that feels calm, grounding, and non-judgmental. " +
-    "Keep your response short and focused: 2–4 chhote, saaf paragraphs. " +
-    "Always end with one gentle reflection question that the user can sit with. " +
-    "You must respond strictly in JSON as described by the user message.";
+  const system = buildSystemPrompt(payload.language ?? "English");
 
-  const contextBlock =
-    passages.length > 0
-      ? `Yah kuchh sambandhit Gita ke bhaag hain:\n\n${passages
-        .map((p, index) => `(${index + 1}) ${p}`)
-        .join("\n\n")}\n\n`
-      : "";
-
-  const userPrompt =
-    `${contextBlock}` +
-    `Upyogakarta ka sandesh (Hindi ya mix language ho sakta hai):\n"${payload.message}"\n\n` +
-    "1. Pehle, unki bhavna ko bahut dhyaan se samjho aur seedhi, naram, thodi desi Hindi mein shabd do (jaise roz-ba-roz baat-cheet).\n" +
-    "2. Phir, Gita ki drishti se, unki sthiti ko samjhaane ki koshish karo, jaise koi dayaalu mitra ya bada bhai/behna aaram se samjha raha ho.\n" +
-    "3. Bhasha bahut hi naram, dhairya-poorn, dheemi aur tasalli dene wali ho. English vaakya mat likho.\n" +
-    "4. Jawaab lamba mat banao: bas 2–4 chhote, saaf paragraphs rakho, taaki padhna halka lage.\n" +
-    "5. Ant mein sirf ek reflection question do, jo unhe dheere se andar jhaankne mein madad kare, aur yeh question bhi seedhi Hindi mein ho.\n\n" +
-    "Apna uttar sirf is JSON format mein do (koi extra text nahi):\n" +
-    '{\n  "emotion": "string (Hindi)",\n  "topic": "string (Hindi)",\n  "response": "string (Hindi explanation)",\n  "reflectionQuestion": "string (Hindi question)"\n}';
+  const userPrompt = buildUserPrompt(payload, passages);
 
   let res: Response;
   try {
@@ -125,31 +136,8 @@ async function callOpenAiLlm(
 
   const model = process.env.OPENAI_LLM_MODEL || "gpt-4o";
 
-  const system =
-    "You are a deeply empathetic counselor who blends modern mental health understanding with the wisdom of the Bhagavad Gita. " +
-    "You must reply almost entirely in Hindi, using very simple, soothing, everyday Hindi words, like a caring elder or close friend. Avoid English sentences; only occasional single English terms or Sanskrit words are allowed when natural. " +
-    "You occasionally weave in short Sanskrit lines from the shlokas in a respectful way. " +
-    "Your task is to respond to the user in a way that feels calm, grounding, and non-judgmental. " +
-    "Keep your response short and focused: 2–4 chhote, saaf paragraphs. " +
-    "Always end with one gentle reflection question that the user can sit with.";
-
-  const contextBlock =
-    passages.length > 0
-      ? `Yah kuchh sambandhit Gita ke bhaag hain:\n\n${passages
-        .map((p, index) => `(${index + 1}) ${p}`)
-        .join("\n\n")}\n\n`
-      : "";
-
-  const userPrompt =
-    `${contextBlock}` +
-    `Upyogakarta ka sandesh (Hindi ya mix language ho sakta hai):\n"${payload.message}"\n\n` +
-    "1. Pehle, unki bhavna ko bahut dhyaan se samjho aur seedhi, naram, thodi desi Hindi mein shabd do (jaise roz-ba-roz baat-cheet).\n" +
-    "2. Phir, Gita ki drishti se, unki sthiti ko samjhaane ki koshish karo, jaise koi dayaalu mitra ya bada bhai/behna aaram se samjha raha ho.\n" +
-    "3. Bhasha bahut hi naram, dhairya-poorn, dheemi aur tasalli dene wali ho. English vaakya mat likho.\n" +
-    "4. Jawaab lamba mat banao: bas 2–4 chhote, saaf paragraphs rakho, taaki padhna halka lage.\n" +
-    "5. Ant mein sirf ek reflection question do, jo unhe dheere se andar jhaankne mein madad kare, aur yeh question bhi seedhi Hindi mein ho.\n\n" +
-    "Apna uttar sirf is JSON format mein do (koi extra text nahi):\n" +
-    '{\n  "emotion": "string (Hindi)",\n  "topic": "string (Hindi)",\n  "response": "string (Hindi explanation)",\n  "reflectionQuestion": "string (Hindi question)"\n}';
+  const system = buildSystemPrompt(payload.language ?? "English");
+  const userPrompt = buildUserPrompt(payload, passages);
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -230,32 +218,8 @@ async function callAnthropicLlm(
 
   const model = process.env.ANTHROPIC_LLM_MODEL || "claude-3-5-sonnet-20241022";
 
-  const system =
-    "You are a deeply empathetic counselor who blends modern mental health understanding with the wisdom of the Bhagavad Gita. " +
-    "You must reply almost entirely in Hindi, using very simple, soothing, everyday Hindi words, like a caring elder or close friend. Avoid English sentences; only occasional single English terms or Sanskrit words are allowed when natural. " +
-    "You occasionally weave in short Sanskrit lines from the shlokas in a respectful way. " +
-    "Your task is to respond to the user in a way that feels calm, grounding, and non-judgmental. " +
-    "Keep your response short and focused: 2–4 chhote, saaf paragraphs. " +
-    "Always end with one gentle reflection question that the user can sit with. " +
-    "You must respond strictly in JSON as described by the user message.";
-
-  const contextBlock =
-    passages.length > 0
-      ? `Yah kuchh sambandhit Gita ke bhaag hain:\n\n${passages
-        .map((p, index) => `(${index + 1}) ${p}`)
-        .join("\n\n")}\n\n`
-      : "";
-
-  const userPrompt =
-    `${contextBlock}` +
-    `Upyogakarta ka sandesh (Hindi ya mix language ho sakta hai):\n"${payload.message}"\n\n` +
-    "1. Pehle, unki bhavna ko bahut dhyaan se samjho aur seedhi, naram, thodi desi Hindi mein shabd do (jaise roz-ba-roz baat-cheet).\n" +
-    "2. Phir, Gita ki drishti se, unki sthiti ko samjhaane ki koshish karo, jaise koi dayaalu mitra ya bada bhai/behna aaram se samjha raha ho.\n" +
-    "3. Bhasha bahut hi naram, dhairya-poorn, dheemi aur tasalli dene wali ho. English vaakya mat likho.\n" +
-    "4. Jawaab lamba mat banao: bas 2–4 chhote, saaf paragraphs rakho, taaki padhna halka lage.\n" +
-    "5. Ant mein sirf ek reflection question do, jo unhe dheere se andar jhaankne mein madad kare, aur yeh question bhi seedhi Hindi mein ho.\n\n" +
-    "Apna uttar sirf is JSON format mein do (koi extra text nahi):\n" +
-    '{\n  "emotion": "string (Hindi)",\n  "topic": "string (Hindi)",\n  "response": "string (Hindi explanation)",\n  "reflectionQuestion": "string (Hindi question)"\n}';
+  const system = buildSystemPrompt(payload.language ?? "English");
+  const userPrompt = buildUserPrompt(payload, passages);
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -337,27 +301,29 @@ export async function POST(request: Request) {
 
   const message =
     body && typeof body.message === "string" ? body.message.trim() : "";
+  const language =
+    body && typeof body.language === "string" ? body.language : "English";
 
   if (!message) {
     return new Response("No message provided", { status: 400 });
   }
 
   const passageTexts: string[] = [];
+  const req: GuideLlmRequest = { message, language };
 
   let result: GuideLlmResponse | null = null;
 
   const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
   const hasOpenAi = !!process.env.OPENAI_API_KEY;
 
-  // Use Ollama by default as per user request
-  result = await callOllamaLlm({ message }, passageTexts);
+  // Try Ollama first, fallback to OpenAI then Anthropic
+  result = await callOllamaLlm(req, passageTexts);
 
-  // Fallback to other providers if Ollama fails and keys are available
   if (!result && hasOpenAi) {
-    result = await callOpenAiLlm({ message }, passageTexts);
+    result = await callOpenAiLlm(req, passageTexts);
   }
   if (!result && hasAnthropic) {
-    result = await callAnthropicLlm({ message }, passageTexts);
+    result = await callAnthropicLlm(req, passageTexts);
   }
 
   if (!result) {
