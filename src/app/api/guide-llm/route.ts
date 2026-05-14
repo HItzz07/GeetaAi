@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 type GuideLlmRequest = {
   message: string;
   language?: string;
+  provider?: "ollama" | "groq" | "openai" | "anthropic";
 };
 
 type GuideLlmResponse = {
@@ -207,6 +208,88 @@ async function callOpenAiLlm(
   };
 }
 
+async function callGroqLlm(
+  payload: GuideLlmRequest,
+  passages: string[]
+): Promise<GuideLlmResponse | null> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const model = process.env.GROQ_LLM_MODEL || "llama-3.3-70b-versatile";
+
+  const system = buildSystemPrompt(payload.language ?? "English");
+  const userPrompt = buildUserPrompt(payload, passages);
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    try {
+      const errorBody = await res.text();
+      console.error("Groq LLM error:", res.status, errorBody);
+    } catch {
+      console.error("Groq LLM error with unknown body", res.status);
+    }
+    return null;
+  }
+
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+
+  const content =
+    data.choices &&
+      data.choices[0] &&
+      data.choices[0].message &&
+      data.choices[0].message.content
+      ? data.choices[0].message.content
+      : null;
+
+  if (!content) {
+    return null;
+  }
+
+  let parsed: {
+    emotion?: string;
+    topic?: string;
+    response?: string;
+    reflectionQuestion?: string;
+  };
+
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+
+  if (!parsed.response || !parsed.reflectionQuestion) {
+    return null;
+  }
+
+  return {
+    emotion: parsed.emotion || "Mixed",
+    topic: parsed.topic || "Understanding your situation",
+    response: parsed.response,
+    reflectionQuestion: parsed.reflectionQuestion,
+    passages,
+  };
+}
+
 async function callAnthropicLlm(
   payload: GuideLlmRequest,
   passages: string[]
@@ -303,27 +386,39 @@ export async function POST(request: Request) {
     body && typeof body.message === "string" ? body.message.trim() : "";
   const language =
     body && typeof body.language === "string" ? body.language : "English";
+  const provider =
+    body && typeof body.provider === "string" ? body.provider : "ollama";
 
   if (!message) {
     return new Response("No message provided", { status: 400 });
   }
 
   const passageTexts: string[] = [];
-  const req: GuideLlmRequest = { message, language };
+  const req: GuideLlmRequest = { message, language, provider };
 
   let result: GuideLlmResponse | null = null;
 
-  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+  const hasGroq = !!process.env.GROQ_API_KEY;
   const hasOpenAi = !!process.env.OPENAI_API_KEY;
+  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
 
-  // Try Ollama first, fallback to OpenAI then Anthropic
-  result = await callOllamaLlm(req, passageTexts);
-
-  if (!result && hasOpenAi) {
+  if (provider === "groq" && hasGroq) {
+    result = await callGroqLlm(req, passageTexts);
+  } else if (provider === "openai" && hasOpenAi) {
     result = await callOpenAiLlm(req, passageTexts);
-  }
-  if (!result && hasAnthropic) {
+  } else if (provider === "anthropic" && hasAnthropic) {
     result = await callAnthropicLlm(req, passageTexts);
+  } else {
+    result = await callOllamaLlm(req, passageTexts);
+    if (!result && hasGroq) {
+      result = await callGroqLlm(req, passageTexts);
+    }
+    if (!result && hasOpenAi) {
+      result = await callOpenAiLlm(req, passageTexts);
+    }
+    if (!result && hasAnthropic) {
+      result = await callAnthropicLlm(req, passageTexts);
+    }
   }
 
   if (!result) {

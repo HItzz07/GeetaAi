@@ -25,12 +25,13 @@ export default function Home() {
   const [guide, setGuide] = useState<GuideResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState("English");
+  const [provider, setProvider] = useState("ollama");
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const resultsRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!message.trim()) return;
     setLoading(true);
@@ -48,6 +49,7 @@ export default function Home() {
           text: message,
           age: 27,
           language,
+          provider,
         }),
       });
       if (!res.ok) {
@@ -190,33 +192,46 @@ export default function Home() {
               </div>
 
               {error && (
-                <div className="rounded-lg bg-sacred-red/10 border border-sacred-red/20 px-4 py-2 text-sm text-sacred-red/80">
+<div className="rounded-lg bg-sacred-red/10 border border-sacred-red/20 px-4 py-2 text-sm text-sacred-red/80">
                   {error}
                 </div>
               )}
 
-              <div className="flex flex-col gap-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
-                      Guidance Language
-                    </label>
-                    <select
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
-                      className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
-                    >
-                      <option value="English" className="bg-zinc-900">English</option>
-                      <option value="Hindi" className="bg-zinc-900">Hindi</option>
-                    </select>
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
+                        Guidance Language
+                      </label>
+                      <select
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
+                      >
+                        <option value="English" className="bg-zinc-900">English</option>
+                        <option value="Hindi" className="bg-zinc-900">Hindi</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
+                        AI Provider
+                      </label>
+                      <select
+                        value={provider}
+                        onChange={(e) => setProvider(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
+                      >
+                        <option value="ollama" className="bg-zinc-900">Ollama (Llama)</option>
+                        <option value="groq" className="bg-zinc-900">Groq (Fast)</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="relative group overflow-hidden rounded-full bg-gradient-to-r from-saffron to-deep-saffron px-8 py-4 text-sm font-bold text-zinc-950 shadow-[0_10px_30px_rgba(255,103,31,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="relative group overflow-hidden rounded-full bg-gradient-to-r from-saffron to-deep-saffron px-8 py-4 text-sm font-bold text-zinc-950 shadow-[0_10px_30px_rgba(255,103,31,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                   <span className="relative z-10 flex items-center justify-center gap-2">
                     {loading ? (
                       <>
