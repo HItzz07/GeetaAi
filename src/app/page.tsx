@@ -25,8 +25,10 @@ export default function Home() {
   const [guide, setGuide] = useState<GuideResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState("English");
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const resultsRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +69,39 @@ export default function Home() {
     }
   }
 
+
+  async function handleSpeak() {
+    if (!guide || isSpeaking) return;
+    const text = `${guide.verse_sanskrit_english.split(" | ")[0]}. ${guide.personalized_wisdom} ${guide.reflection_question}`;
+    setIsSpeaking(true);
+    try {
+      const res = await fetch("/api/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("tts_failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.playbackRate = 0.85;
+      audioRef.current = audio;
+      audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null; };
+      audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null; };
+      await audio.play();
+    } catch {
+      setIsSpeaking(false);
+    }
+  }
+
+  function stopSpeaking() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setIsSpeaking(false);
+  }
 
   return (
     <div className="sacred-background flex min-h-screen flex-col items-center justify-start px-4 py-12 text-zinc-50 overflow-hidden">
@@ -113,7 +148,7 @@ export default function Home() {
               Gita Mind Guide
             </h1>
             <p className="mx-auto max-w-2xl text-lg text-zinc-400 font-light italic leading-relaxed">
-              "When doubts haunt me, when disappointments stare me in the face, and I see not one ray of hope on the horizon, I turn to Bhagavad Gita and find a verse to comfort me."
+              &ldquo;When doubts haunt me, when disappointments stare me in the face, and I see not one ray of hope on the horizon, I turn to Bhagavad Gita and find a verse to comfort me.&rdquo;
               <br />
               <span className="text-sm text-zinc-600 not-italic">— Mahatma Gandhi</span>
             </p>
@@ -292,6 +327,15 @@ export default function Home() {
                         </p>
                       </div>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={isSpeaking ? stopSpeaking : handleSpeak}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-xs font-medium text-zinc-300 transition hover:bg-white/10 hover:text-zinc-50"
+                    >
+                      <span className={`h-2 w-2 rounded-full ${isSpeaking ? "bg-sacred-red animate-pulse" : "bg-emerald-400"}`} />
+                      {isSpeaking ? "Stop voice" : "Listen in AI voice"}
+                    </button>
                   </div>
                 </div>
               </div>
