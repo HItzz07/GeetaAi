@@ -1,168 +1,139 @@
 export const runtime = "nodejs";
 
-type GuideLlmRequest = {
-  message: string;
-  language?: string;
-  provider?: "ollama" | "groq" | "openai" | "anthropic";
+import gitaData from "@/data/gita.json";
+
+type Verse = {
+  id: string;
+  chapter: number;
+  verse: number;
+  sanskrit: string;
+  transliteration: string;
+  english: string;
+  english_alt: string;
 };
 
-type GuideLlmResponse = {
-  emotion: string;
-  topic: string;
-  response: string;
-  reflectionQuestion: string;
-  passages: string[];
+type GuideResponse = {
+  verse_sanskrit_english: string;
+  translation: string;
+  personalized_wisdom: string;
+  reflection_question: string;
+  metadata: {
+    id: string;
+    chapter: number;
+    verse: number;
+    topics: string;
+    meaning: string;
+  };
 };
 
-function buildSystemPrompt(language: string): string {
-  if (language === "Hindi") {
-    return (
-      "You are a deeply empathetic counselor who blends modern mental health understanding with the wisdom of the Bhagavad Gita. " +
-      "Reply entirely in simple, soothing, everyday Hindi — like a caring elder or close friend. Only occasional Sanskrit words allowed. " +
-      "Weave in short Sanskrit shloka lines naturally. Respond calmly, with warmth and no judgment. " +
-      "Keep response to 2–4 short paragraphs. End with one gentle Hindi reflection question. " +
-      "Respond strictly in JSON as described by the user message."
-    );
+const STOPWORDS = new Set([
+  "i", "me", "my", "the", "a", "an", "is", "am", "are", "was", "were", "be",
+  "been", "have", "has", "had", "do", "does", "did", "will", "would", "could",
+  "should", "may", "might", "shall", "can", "to", "of", "in", "on", "at",
+  "for", "with", "and", "or", "but", "if", "not", "that", "this", "it", "he",
+  "she", "they", "we", "you", "what", "how", "why", "when", "where", "who",
+  "feel", "feeling", "about", "just", "very", "really", "so", "much", "all",
+]);
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+}
+
+function pickVerse(message: string): Verse {
+  const verses = (gitaData as { verses: Verse[] }).verses;
+  const queryTokens = tokenize(message);
+
+  const fallback =
+    verses.find((v) => v.id === "BG2.47") ?? verses[46];
+
+  if (queryTokens.length === 0) return fallback;
+
+  const querySet = new Set(queryTokens);
+  let best = fallback;
+  let bestScore = -1;
+
+  for (const v of verses) {
+    if (v.chapter === 1) continue;
+    const vText = ((v.english ?? "") + " " + (v.english_alt ?? "")).toLowerCase();
+    let score = 0;
+    for (const t of querySet) {
+      if (vText.includes(t)) score++;
+    }
+    // Boost wisdom-dense chapters
+    if ([2, 6, 12, 18].includes(v.chapter)) score += 0.5;
+    if (score > bestScore) {
+      bestScore = score;
+      best = v;
+    }
   }
-  return (
-    "You are a deeply empathetic counselor blending modern mental health understanding with the wisdom of the Bhagavad Gita. " +
-    "Reply in warm, clear, soothing English — like a compassionate friend or wise elder. " +
-    "Naturally weave in relevant Sanskrit shloka lines with their meaning. Respond calmly and non-judgmentally. " +
-    "Keep response to 2–4 short paragraphs. End with one gentle English reflection question. " +
-    "Respond strictly in JSON as described by the user message."
-  );
+
+  return best;
 }
 
-function buildUserPrompt(payload: GuideLlmRequest, passages: string[]): string {
-  const lang = payload.language === "Hindi" ? "Hindi" : "English";
-  const contextBlock =
-    passages.length > 0
-      ? `Relevant Gita passages:\n\n${passages.map((p, i) => `(${i + 1}) ${p}`).join("\n\n")}\n\n`
-      : "";
-  return (
-    contextBlock +
-    `User's message: "${payload.message}"\n\n` +
-    `Reply in ${lang}. Respond strictly in this JSON format (no extra text):\n` +
-    '{\n  "emotion": "string",\n  "topic": "string",\n  "response": "string",\n  "reflectionQuestion": "string"\n}'
-  );
-}
+async function callGroq(
+  message: string,
+  verse: Verse,
+  language: string
+): Promise<{
+  personalized_wisdom: string;
+  reflection_question: string;
+  topics: string;
+  meaning: string;
+} | null> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
 
-async function callOllamaLlm(
-  payload: GuideLlmRequest,
-  passages: string[]
-): Promise<GuideLlmResponse | null> {
-  const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  const model = process.env.OLLAMA_LLM_MODEL || "llama3.2";
+  const model = process.env.GROQ_LLM_MODEL ?? "llama-3.3-70b-versatile";
+  const isHindi = language === "Hindi";
 
-  const system = buildSystemPrompt(payload.language ?? "English");
+  const system = isHindi
+    ? "आप एक करुणामय परामर्शदाता हैं जो भगवद्गीता की ज्ञान से आधुनिक मनोवैज्ञानिक समझ को जोड़ते हैं। सरल, शांत, रोजमर्रा की हिंदी में जवाब दें — एक देखभाल करने वाले बड़े या करीबी दोस्त की तरह।"
+    : "You are a deeply empathetic counselor blending modern mental health understanding with the wisdom of the Bhagavad Gita. Reply in warm, clear, soothing English — like a compassionate friend or wise elder.";
 
-  const userPrompt = buildUserPrompt(payload, passages);
+  const lang = isHindi ? "Hindi" : "English";
+
+  const prompt =
+    `Verse ${verse.id} (${verse.transliteration.slice(0, 80)}...):\n` +
+    `"${verse.english}"\n\n` +
+    `User shares: "${message}"\n\n` +
+    `Respond ONLY in valid JSON in ${lang}:\n` +
+    `{\n` +
+    `  "personalized_wisdom": "2-4 paragraphs of warm, specific guidance connecting this verse to the user's situation",\n` +
+    `  "reflection_question": "one gentle question to help the user reflect deeply",\n` +
+    `  "topics": "comma-separated emotion/topic tags (e.g. anxiety, duty, peace)",\n` +
+    `  "meaning": "one sentence meaning of this verse in context of the user's situation"\n` +
+    `}`;
 
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}/api/chat`, {
+    res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model,
-        stream: false,
+        response_format: { type: "json_object" },
         messages: [
           { role: "system", content: system },
-          { role: "user", content: userPrompt },
+          { role: "user", content: prompt },
         ],
+        max_tokens: 900,
+        temperature: 0.7,
       }),
     });
   } catch (err) {
-    console.error("Ollama LLM network error:", err);
+    console.error("Groq network error:", err);
     return null;
   }
 
   if (!res.ok) {
-    try {
-      const errorBody = await res.text();
-      console.error("Ollama LLM error:", res.status, errorBody);
-    } catch {
-      console.error("Ollama LLM error with unknown body", res.status);
-    }
-    return null;
-  }
-
-  const data = (await res.json()) as {
-    message?: { content?: string };
-  };
-
-  const text =
-    data.message && data.message.content ? data.message.content : null;
-
-  if (!text) {
-    return null;
-  }
-
-  let parsed: {
-    emotion?: string;
-    topic?: string;
-    response?: string;
-    reflectionQuestion?: string;
-  };
-
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return null;
-  }
-
-  if (!parsed.response || !parsed.reflectionQuestion) {
-    return null;
-  }
-
-  return {
-    emotion: parsed.emotion || "Mixed",
-    topic: parsed.topic || "Understanding your situation",
-    response: parsed.response,
-    reflectionQuestion: parsed.reflectionQuestion,
-    passages,
-  };
-}
-
-async function callOpenAiLlm(
-  payload: GuideLlmRequest,
-  passages: string[]
-): Promise<GuideLlmResponse | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
-
-  const model = process.env.OPENAI_LLM_MODEL || "gpt-4o";
-
-  const system = buildSystemPrompt(payload.language ?? "English");
-  const userPrompt = buildUserPrompt(payload, passages);
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    try {
-      const errorBody = await res.text();
-      console.error("OpenAI LLM error:", res.status, errorBody);
-    } catch {
-      console.error("OpenAI LLM error with unknown body", res.status);
-    }
+    console.error("Groq error:", res.status, await res.text().catch(() => ""));
     return null;
   }
 
@@ -170,277 +141,68 @@ async function callOpenAiLlm(
     choices?: { message?: { content?: string } }[];
   };
 
-  const content =
-    data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      data.choices[0].message.content
-      ? data.choices[0].message.content
-      : null;
-
-  if (!content) {
-    return null;
-  }
-
-  let parsed: {
-    emotion?: string;
-    topic?: string;
-    response?: string;
-    reflectionQuestion?: string;
-  };
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) return null;
 
   try {
-    parsed = JSON.parse(content);
+    const parsed = JSON.parse(content) as {
+      personalized_wisdom?: string;
+      reflection_question?: string;
+      topics?: string;
+      meaning?: string;
+    };
+    if (!parsed.personalized_wisdom || !parsed.reflection_question) return null;
+    return {
+      personalized_wisdom: parsed.personalized_wisdom,
+      reflection_question: parsed.reflection_question,
+      topics: parsed.topics ?? "wisdom, life",
+      meaning: parsed.meaning ?? verse.english.slice(0, 120),
+    };
   } catch {
     return null;
   }
-
-  if (!parsed.response || !parsed.reflectionQuestion) {
-    return null;
-  }
-
-  return {
-    emotion: parsed.emotion || "Mixed",
-    topic: parsed.topic || "Understanding your situation",
-    response: parsed.response,
-    reflectionQuestion: parsed.reflectionQuestion,
-    passages,
-  };
-}
-
-async function callGroqLlm(
-  payload: GuideLlmRequest,
-  passages: string[]
-): Promise<GuideLlmResponse | null> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
-
-  const model = process.env.GROQ_LLM_MODEL || "llama-3.3-70b-versatile";
-
-  const system = buildSystemPrompt(payload.language ?? "English");
-  const userPrompt = buildUserPrompt(payload, passages);
-
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    try {
-      const errorBody = await res.text();
-      console.error("Groq LLM error:", res.status, errorBody);
-    } catch {
-      console.error("Groq LLM error with unknown body", res.status);
-    }
-    return null;
-  }
-
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-
-  const content =
-    data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      data.choices[0].message.content
-      ? data.choices[0].message.content
-      : null;
-
-  if (!content) {
-    return null;
-  }
-
-  let parsed: {
-    emotion?: string;
-    topic?: string;
-    response?: string;
-    reflectionQuestion?: string;
-  };
-
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return null;
-  }
-
-  if (!parsed.response || !parsed.reflectionQuestion) {
-    return null;
-  }
-
-  return {
-    emotion: parsed.emotion || "Mixed",
-    topic: parsed.topic || "Understanding your situation",
-    response: parsed.response,
-    reflectionQuestion: parsed.reflectionQuestion,
-    passages,
-  };
-}
-
-async function callAnthropicLlm(
-  payload: GuideLlmRequest,
-  passages: string[]
-): Promise<GuideLlmResponse | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
-
-  const model = process.env.ANTHROPIC_LLM_MODEL || "claude-3-5-sonnet-20241022";
-
-  const system = buildSystemPrompt(payload.language ?? "English");
-  const userPrompt = buildUserPrompt(payload, passages);
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 800,
-      system,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: userPrompt,
-            },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    try {
-      const errorBody = await res.text();
-      console.error("Anthropic LLM error:", res.status, errorBody);
-    } catch {
-      console.error("Anthropic LLM error with unknown body", res.status);
-    }
-    return null;
-  }
-
-  const data = (await res.json()) as {
-    content?: { type: string; text?: string }[];
-  };
-
-  const first =
-    data.content && data.content.length > 0 ? data.content[0] : null;
-  const text = first && first.type === "text" ? first.text : null;
-
-  if (!text) {
-    return null;
-  }
-
-  let parsed: {
-    emotion?: string;
-    topic?: string;
-    response?: string;
-    reflectionQuestion?: string;
-  };
-
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return null;
-  }
-
-  if (!parsed.response || !parsed.reflectionQuestion) {
-    return null;
-  }
-
-  return {
-    emotion: parsed.emotion || "Mixed",
-    topic: parsed.topic || "Understanding your situation",
-    response: parsed.response,
-    reflectionQuestion: parsed.reflectionQuestion,
-    passages,
-  };
 }
 
 export async function POST(request: Request) {
-  const body = (await request
-    .json()
-    .catch(() => null)) as GuideLlmRequest | null;
-
-  const message =
-    body && typeof body.message === "string" ? body.message.trim() : "";
+  const body = await request.json().catch(() => null);
+  const text =
+    body && typeof body.text === "string" ? body.text.trim() : "";
   const language =
     body && typeof body.language === "string" ? body.language : "English";
-  const provider =
-    body && typeof body.provider === "string" ? body.provider : "ollama";
 
-  if (!message) {
+  if (!text) {
     return new Response("No message provided", { status: 400 });
   }
 
-  const passageTexts: string[] = [];
-  const req: GuideLlmRequest = { message, language, provider };
+  const verse = pickVerse(text);
+  const llm = await callGroq(text, verse, language);
 
-  let result: GuideLlmResponse | null = null;
-
-  const hasGroq = !!process.env.GROQ_API_KEY;
-  const hasOpenAi = !!process.env.OPENAI_API_KEY;
-  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-
-  if (provider === "groq" && hasGroq) {
-    result = await callGroqLlm(req, passageTexts);
-  } else if (provider === "openai" && hasOpenAi) {
-    result = await callOpenAiLlm(req, passageTexts);
-  } else if (provider === "anthropic" && hasAnthropic) {
-    result = await callAnthropicLlm(req, passageTexts);
-  } else {
-    result = await callOllamaLlm(req, passageTexts);
-    if (!result && hasGroq) {
-      result = await callGroqLlm(req, passageTexts);
-    }
-    if (!result && hasOpenAi) {
-      result = await callOpenAiLlm(req, passageTexts);
-    }
-    if (!result && hasAnthropic) {
-      result = await callAnthropicLlm(req, passageTexts);
-    }
-  }
-
-  if (!result) {
+  if (!llm) {
     return new Response(
       JSON.stringify({
-        error: "LLM_CALL_FAILED",
-        message:
-          "Tried contacting the LLM providers, but the calls failed. Please check API keys and network.",
+        error: "LLM_FAILED",
+        message: "Groq API call failed. Check GROQ_API_KEY env var.",
       }),
-      {
-        status: 502,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+      { status: 502, headers: { "Content-Type": "application/json" } }
     );
   }
 
+  const result: GuideResponse = {
+    verse_sanskrit_english: `${verse.sanskrit} | ${verse.transliteration}`,
+    translation: verse.english,
+    personalized_wisdom: llm.personalized_wisdom,
+    reflection_question: llm.reflection_question,
+    metadata: {
+      id: verse.id,
+      chapter: verse.chapter,
+      verse: verse.verse,
+      topics: llm.topics,
+      meaning: llm.meaning,
+    },
+  };
+
   return new Response(JSON.stringify(result), {
     status: 200,
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
   });
 }

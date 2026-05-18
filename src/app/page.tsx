@@ -25,7 +25,6 @@ export default function Home() {
   const [guide, setGuide] = useState<GuideResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState("English");
-  const [provider, setProvider] = useState("ollama");
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -39,17 +38,14 @@ async function handleSubmit(e: React.FormEvent) {
     setGuide(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
-      const res = await fetch(`${apiUrl}/api/v1/reflect`, {
+      const res = await fetch("/api/guide-llm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           text: message,
-          age: 27,
           language,
-          provider,
         }),
       });
       if (!res.ok) {
@@ -198,33 +194,18 @@ async function handleSubmit(e: React.FormEvent) {
               )}
 
                 <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
-                        Guidance Language
-                      </label>
-                      <select
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
-                        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
-                      >
-                        <option value="English" className="bg-zinc-900">English</option>
-                        <option value="Hindi" className="bg-zinc-900">Hindi</option>
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
-                        AI Provider
-                      </label>
-                      <select
-                        value={provider}
-                        onChange={(e) => setProvider(e.target.value)}
-                        className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
-                      >
-                        <option value="ollama" className="bg-zinc-900">Ollama (Llama)</option>
-                        <option value="groq" className="bg-zinc-900">Groq (Fast)</option>
-                      </select>
-                    </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1">
+                      Guidance Language
+                    </label>
+                    <select
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-300 outline-none focus:border-saffron/50 appearance-none cursor-pointer hover:bg-black/30 transition-colors"
+                    >
+                      <option value="English" className="bg-zinc-900">English</option>
+                      <option value="Hindi" className="bg-zinc-900">Hindi</option>
+                    </select>
                   </div>
 
                   <button
